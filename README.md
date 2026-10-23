@@ -15,7 +15,7 @@
 
 ## 介绍
 
-FLUTML 是一款开源的 Material Design 3 Minecraft 启动器，支持模组管理、ModLoader 安装（Forge、Fabric）、模组资源下载等功能。
+FLUTML 是一款开源的 Material Design 3 Minecraft 启动器，支持模组管理、ModLoader 安装（Forge、Fabric）、模组资源下载、联机等功能。
 
 ## 下载
 
