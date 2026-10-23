@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-
+import '../screens/multiplayer_page.dart';
 import '../providers/account_provider.dart';
 import '../screens/download_manager_page.dart';
 import '../screens/downloads_page.dart';
@@ -42,6 +42,11 @@ class _HomeShellState extends State<HomeShell> {
       label: Text('下载'),
     ),
     NavigationRailDestination(
+      icon: Icon(Icons.hub_outlined),
+      selectedIcon: Icon(Icons.hub),
+      label: Text('联机'),
+    ),
+    NavigationRailDestination(
       icon: Icon(Icons.downloading_outlined),
       selectedIcon: Icon(Icons.downloading),
       label: Text('管理'),
@@ -63,6 +68,7 @@ class _HomeShellState extends State<HomeShell> {
       VersionsPage(),
       ResourcesPage(),
       DownloadsPage(),
+      MultiplayerPage(),
       DownloadManagerPage(),
       SettingsPage(),
     ];

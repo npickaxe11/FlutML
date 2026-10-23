@@ -36,3 +36,5 @@ flutter:
     - family: CustomFont
       fonts:
         - asset: fonts/so.otf
+  assets:
+    - assets/terracotta/

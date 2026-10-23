@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
 
+import 'providers/terracotta_provider.dart';
 import 'providers/account_provider.dart';
 import 'providers/download_manager_provider.dart';
 import 'providers/launch_provider.dart';
@@ -42,6 +43,7 @@ Future<void> main() async {
     downloadManager: downloadManagerProvider,
   );
   final themeProvider = ThemeProvider();
+  final terracottaProvider = TerracottaProvider();
 
   await Future.wait([accountProvider.init(), settingsProvider.init()]);
   await versionProvider.init(source: settingsProvider.settings.downloadSource);
@@ -65,6 +67,7 @@ Future<void> main() async {
         ChangeNotifierProvider.value(value: downloadManagerProvider),
         ChangeNotifierProvider.value(value: resourceProvider),
         ChangeNotifierProvider.value(value: themeProvider),
+        ChangeNotifierProvider.value(value: terracottaProvider),
       ],
       child: const MinecraftLauncherApp(),
     ),
