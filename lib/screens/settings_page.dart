@@ -362,7 +362,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
 
                 _Section(
-                  title: 'FLUTML 0.1.5',
+                  title: 'FLUTML 0.1.6',
                   child: Column(
                     children: [
                       ListTile(
