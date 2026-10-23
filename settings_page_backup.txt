@@ -1,0 +1,611 @@
+﻿import 'package:file_picker/file_picker.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+
+import '../models/download_source.dart';
+import '../providers/settings_provider.dart';
+import '../providers/version_provider.dart';
+
+class SettingsPage extends StatefulWidget {
+  const SettingsPage({super.key});
+
+  @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  late TextEditingController _javaController;
+  late TextEditingController _gameDirController;
+  late TextEditingController _jvmArgsController;
+  late TextEditingController _minMemController;
+  late TextEditingController _maxMemController;
+  late TextEditingController _widthController;
+  late TextEditingController _heightController;
+  bool _initialized = false;
+  // Per-version Java override controllers
+  Map<String, TextEditingController> _javaOverrideControllers = {};
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_initialized) return;
+    final s = context.read<SettingsProvider>().settings;
+    final versions = context.read<VersionProvider>();
+    _javaController = TextEditingController(text: s.javaPath);
+    _gameDirController = TextEditingController(text: s.gameDirectory);
+    _jvmArgsController = TextEditingController(text: s.jvmArgs);
+    _minMemController = TextEditingController(text: '${s.minMemoryMb}');
+    _maxMemController = TextEditingController(text: '${s.maxMemoryMb}');
+    _widthController = TextEditingController(text: '${s.windowWidth}');
+    _heightController = TextEditingController(text: '${s.windowHeight}');
+    _initialized = true;
+    // 鍒濆鍖?per-version Java 瑕嗙洊鎺у埗鍣ㄦ槧灏?
+    _javaOverrideControllers = {};
+    for (final v in versions.installed) {
+      final key = v.id;
+      if (!_javaOverrideControllers.containsKey(key)) {
+        _javaOverrideControllers[key] = TextEditingController(
+          text: s.javaOverrides[key] ?? '',
+        );
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _javaController.dispose();
+    _gameDirController.dispose();
+    _jvmArgsController.dispose();
+    _minMemController.dispose();
+    _maxMemController.dispose();
+    _widthController.dispose();
+    _heightController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = context.watch<SettingsProvider>();
+    final versions = context.watch<VersionProvider>();
+    final s = provider.settings;
+    final scheme = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(32, 24, 32, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('璁剧疆', style: text.headlineMedium),
+          const SizedBox(height: 8),
+Text(
+            '鍦ㄦ璁惧畾浣犵殑鍚姩鍣ㄩ厤缃?,
+            style: text.bodyLarge?.copyWith(color: scheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: 24),
+          Expanded(
+            child: ListView(
+              children: [
+                _Section(
+                  title: 'Java 閰嶇疆',
+                  child: Column(
+                    children: [
+                      TextField(
+                        controller: _javaController,
+                        decoration: InputDecoration(
+                          labelText: 'Java 杩愯鏃惰矾寰?,
+                          hintText: r'C:\Program Files\Java\...\bin\java.exe',
+                          suffixIcon: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                tooltip: 'Auto detect',
+                                onPressed: provider.scanningJava
+                                    ? null
+                                    : () async {
+                                        final found =
+                                            await provider.scanJavas();
+                                        if (!context.mounted) return;
+                                        if (found.isNotEmpty) {
+                                          _javaController.text =
+                                              found.first.path;
+                                        } else {
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
+                                            const SnackBar(
+                                              content:
+                                                  Text('杩樻病鏈夊彲鐢ㄧ殑 Java 杩愯鏃?),
+                                            ),
+                                          );
+                                        }
+                                      },
+                                icon: provider.scanningJava
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                            strokeWidth: 2),
+                                      )
+                                    : const Icon(Icons.auto_fix_high),
+                              ),
+                              IconButton(
+                                tooltip: 'Browse',
+                                onPressed: () async {
+                                  final result =
+                                      await FilePicker.platform.pickFiles(
+                                    type: FileType.custom,
+                                    allowedExtensions: ['exe'],
+                                  );
+                                  if (result != null &&
+                                      result.files.single.path != null) {
+                                    _javaController.text =
+                                        result.files.single.path!;
+                                  }
+                                },
+                                icon: const Icon(Icons.folder_open),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      if (provider.detectedJavas != null &&
+                          provider.detectedJavas!.isNotEmpty) ...[
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            '妫€娴嬪埌鐨勫畨瑁咃紙鐐瑰嚮浣跨敤涓洪粯璁わ級锛?,
+                            style: text.bodySmall
+                                ?.copyWith(color: scheme.onSurfaceVariant),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            for (final java in provider.detectedJavas!)
+                              ActionChip(
+                                label: Text(
+                                  '${_shortPath(java.path)}'
+                                  '${java.version != null ? ' (${java.version})' : ''}',
+                                ),
+                                avatar: const Icon(Icons.coffee, size: 18),
+                                onPressed: () =>
+                                    _javaController.text = java.path,
+                              ),
+                          ],
+                        ),
+                      ],
+                      if ((provider.detectedJavas == null ||
+                              provider.detectedJavas!.isEmpty) &&
+                          !provider.scanningJava) ...[
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Tip锛氱偣鍑婚瓟娉曟鍙互鑷姩鎵弿鏈湴宸插畨瑁呯殑 Java 杩愯鏃?,
+                            style: text.bodySmall
+                                ?.copyWith(color: scheme.onSurfaceVariant),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _jvmArgsController,
+                        decoration: const InputDecoration(
+                          labelText: '棰濆 JVM 鍙傛暟',
+                          hintText: '-XX:+UseG1GC',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                _Section(
+                  title: '鐗堟湰Java閰嶇疆',
+                  child: Column(
+                    children: [
+                      // 鍏ㄥ眬Java璺緞
+                      TextField(
+                        controller: _javaController,
+                        decoration: InputDecoration(
+                          labelText: '鍏ㄥ眬Java璺緞',
+                          hintText: r'C:\Program Files\Java\...\bin\java.exe',
+                          suffixIcon: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                tooltip: 'Auto detect',
+                                onPressed: provider.scanningJava
+                                    ? null
+                                    : () async {
+                                        final found = await provider.scanJavas();
+                                        if (!context.mounted) return;
+                                        if (found.isNotEmpty) {
+                                          _javaController.text = found.first.path;
+                                        } else {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(
+                                              content:
+                                                  Text('杩樻病鏈夊彲鐢ㄧ殑 Java 杩愯鏃?),
+                                            ),
+                                          );
+                                        }
+                                      },
+                                icon: provider.scanningJava
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                            strokeWidth: 2),
+                                      )
+                                    : const Icon(Icons.auto_fix_high),
+                              ),
+                              IconButton(
+                                tooltip: 'Browse',
+                                onPressed: () async {
+                                  final result = await FilePicker.platform.pickFiles(
+                                    type: FileType.custom,
+                                    allowedExtensions: ['exe'],
+                                  );
+                                  if (result != null &&
+                                      result.files.single.path != null) {
+                                    _javaController.text = result.files.single.path!;
+                                  }
+                                },
+                                icon: const Icon(Icons.folder_open),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      // 宸插畨瑁呯増鏈垪琛?
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final v in versions.installed)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 4),
+                              child: ActionChip(
+                                label: Text(
+                                  '${v.id.substring(0, v.id.length > 20 ? 20 : v.id.length)}鈥?{v.id.length > 20 ? '...' : ''}',
+                                ),
+                                avatar: const Icon(Icons.category, size: 14),
+                                onPressed: () {
+                                  // 鍒囨崲璇ョ増鏈殑Java瑕嗙洊
+                                  final key = v.id;
+                                  final currentController =
+                                      _javaOverrideControllers[key];
+                                  if (currentController != null) {
+                                    // 寮瑰嚭杈撳叆妗嗚鐢ㄦ埛杈撳叆Java璺緞
+                                    _showJavaOverrideDialog(context, v.id, currentController);
+                                  }
+                                },
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                _Section(
+                  title: 'RAM 鍒嗛厤',
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _minMemController,
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                          ],
+                          decoration: const InputDecoration(
+                            labelText: '鏈€灏?(MB)',
+                            suffixText: 'MB',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: TextField(
+                          controller: _maxMemController,
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                          ],
+                          decoration: const InputDecoration(
+                            labelText: '鏈€澶?(MB)',
+                            suffixText: 'MB',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                _Section(
+                  title: '娓告垙閰嶇疆',
+                  child: Column(
+                    children: [
+                      TextField(
+                        controller: _gameDirController,
+                        decoration: InputDecoration(
+                          labelText: '娓告垙鐩綍',
+                          hintText: r'%APPDATA%\.minecraft',
+                          suffixIcon: IconButton(
+                            tooltip: 'Browse',
+                            onPressed: () async {
+                              final path =
+                                  await FilePicker.platform.getDirectoryPath();
+                              if (path != null) {
+                                _gameDirController.text = path;
+                              }
+                            },
+                            icon: const Icon(Icons.folder_open),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _widthController,
+                              keyboardType: TextInputType.number,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly,
+                              ],
+                              decoration: const InputDecoration(
+                                labelText: 'Width',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: TextField(
+                              controller: _heightController,
+                              keyboardType: TextInputType.number,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly,
+                              ],
+                              decoration: const InputDecoration(
+                                labelText: 'Height',
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Fullscreen'),
+                        value: s.fullscreen,
+                        onChanged: (v) =>
+                            provider.update(s.copyWith(fullscreen: v)),
+                      ),
+                    ],
+                  ),
+                ),
+                _Section(
+                  title: '娓告垙涓嬭浇婧?,
+                  child: Column(
+                    children: [
+                      IgnorePointer(
+                        ignoring: versions.downloading,
+                        child: RadioGroup<DownloadSource>(
+                          groupValue: s.downloadSource,
+                          onChanged: (v) => _changeSource(context, v),
+                          child: Column(
+                            children: [
+                              for (final src in DownloadSource.values)
+                                RadioListTile<DownloadSource>(
+                                  contentPadding: EdgeInsets.zero,
+                                  title: Text(src.label),
+                                  subtitle: Text(src.description),
+                                  value: src,
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Switching the source refreshes the version list. '
+                          'If a file is missing on the mirror, the official '
+                          'server is used automatically.',
+                          style: text.bodySmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                _Section(
+                  title: '鐗堟湰鍒楄〃',
+                  child: Column(
+                    children: [
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('鏄剧ず棰勮鐗?),
+                        subtitle: const Text('鍦ㄥ垪琛ㄤ腑鍖呭惈棰勮锛堟祴璇曪級鐗堢増鏈?),
+                        value: s.showSnapshots,
+                        onChanged: (v) =>
+                            provider.update(s.copyWith(showSnapshots: v)),
+                      ),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('鏄剧ず杩滃彜鐗堟湰'),
+                        subtitle: const Text('鍦ㄥ垪琛ㄤ腑鍖呭惈 Beta 鍙婁互涓嬬増鏈?),
+                        value: s.showOldVersions,
+                        onChanged: (v) =>
+                            provider.update(s.copyWith(showOldVersions: v)),
+                      ),
+                    ],
+                  ),
+                ),
+
+                _Section(
+                  title: 'FLUTML 0.1',
+                  child: Column(
+                    children: [
+                      ListTile(
+                        leading: const Icon(Icons.code),
+                        title: const Text('Gitee 浠撳簱'),
+                        subtitle: SelectableText('https://gitee.com/npickaxe11/flut-ml'),
+                        // 涓嶆坊鍔?onTap锛屽畬鍏ㄩ潤鎬?
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: FilledButton.icon(
+                    onPressed: () => _save(context),
+                    icon: const Icon(Icons.save_outlined),
+                    label: const Text('淇濆瓨閰嶇疆'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _shortPath(String path, {int max = 42}) {
+    if (path.length <= max) return path;
+    return '...${path.substring(path.length - max + 3)}';
+  }
+
+  Future<void> _changeSource(
+    BuildContext context,
+    DownloadSource? source,
+  ) async {
+    if (source == null) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final provider = context.read<SettingsProvider>();
+    final versions = context.read<VersionProvider>();
+    await provider.update(provider.settings.copyWith(downloadSource: source));
+    await versions.changeSource(source);
+    messenger.showSnackBar(
+      SnackBar(content: Text('Download source: ${source.label}')),
+    );
+  }
+
+  Future<void> _save(BuildContext context) async {
+    final provider = context.read<SettingsProvider>();
+    final current = provider.settings;
+    final minMem = int.tryParse(_minMemController.text) ?? 512;
+    final maxMem = int.tryParse(_maxMemController.text) ?? 2048;
+    final width = int.tryParse(_widthController.text) ?? 854;
+    final height = int.tryParse(_heightController.text) ?? 480;
+
+    // 鏀堕泦鎵€鏈夌増鏈殑Java瑕嗙洊閰嶇疆
+    final javaOverrides = <String, String>{};
+    for (final entry in _javaOverrideControllers.entries) {
+      final text = entry.value.text.trim();
+      if (text.isNotEmpty) {
+        javaOverrides[entry.key] = text;
+      }
+    }
+    // 鍚堝苟鍒板綋鍓嶈缃?
+    final updatedSettings = current.copyWith(
+      javaPath: _javaController.text.trim(),
+      gameDirectory: _gameDirController.text.trim(),
+      jvmArgs: _jvmArgsController.text.trim(),
+      minMemoryMb: minMem.clamp(256, 65536),
+      maxMemoryMb: maxMem.clamp(512, 65536),
+      windowWidth: width.clamp(640, 7680),
+      windowHeight: height.clamp(480, 4320),
+      javaOverrides: javaOverrides.isNotEmpty ? javaOverrides : {},
+    );
+
+    await provider.update(updatedSettings);
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('璁剧疆宸蹭繚瀛?)),
+      );
+    }
+  }
+
+  /// 寮瑰嚭瀵硅瘽妗嗚鐢ㄦ埛杈撳叆鐗堟湰Java璺緞
+  Future<void> _showJavaOverrideDialog(
+    BuildContext context,
+    String versionId,
+    TextEditingController controller,
+  ) async {
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('${versionId} Java閰嶇疆'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            labelText: 'Java鍙墽琛岃矾寰?,
+            hintText: r'C:\Program Files\Java\...\bin\java.exe',
+          ),
+          enabled: false, // 鍙锛岀偣鍑籄ctionChip宸查€変腑
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('鍙栨秷'),
+          ),
+          TextButton(
+            onPressed: () {
+              // 杩欓噷鍙互淇濆瓨锛屼絾鐢变簬ActionChip鐐瑰嚮宸查€変腑锛屾垜浠€氳繃鍏朵粬鏂瑰紡淇濆瓨
+              Navigator.pop(context, controller.text);
+            },
+            child: const Text('搴旂敤'),
+          ),
+        ],
+      ),
+    );
+    if (result != null && context.mounted) {
+      // 鏇存柊鎺у埗鍣ㄦ枃鏈?
+      controller.text = result;
+      // 閫氳繃 provider 淇濆瓨璁剧疆
+      final provider = context.read<SettingsProvider>();
+      await provider.setJavaOverride(versionId, result);
+      // 鍒锋柊UI
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Java璺緞宸蹭繚瀛?)),
+      );
+    }
+  }
+}
+
+class _Section extends StatelessWidget {
+  const _Section({required this.title, required this.child});
+
+  final String title;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 16),
+              child,
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
